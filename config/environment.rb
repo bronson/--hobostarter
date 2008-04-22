@@ -31,6 +31,7 @@ Rails::Initializer.run do |config|
   # Force all environments to use the same logger level
   # (by default production uses :info, the others :debug)
   # config.log_level = :debug
+  config.active_record.colorize_logging = false 
 
   # Your secret key for verifying cookie session data integrity.
   # If you change this key, all old sessions will become invalid!
