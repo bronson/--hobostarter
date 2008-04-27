@@ -9,23 +9,23 @@ been so easy.
 There is no need to install Rails or Hobo gems.  Just make sure
 you have Ruby and Git installed.
 
-If you have a github account, fork Hobostarter and clone that here:
-
   1. $ git clone git://github.com/bronson/hobostarter.git MYAPP
   2. $ cd MYAPP
   3. $ git submodule init
   4. $ git submodule update
+  5. $ rake db:migrate
 
-That's it.  Now start hacking!
+That's it.  Now fire up script/server and start hacking!  Some immediate
+customizations:
+
+  * Delete the README.hobostarter and CHANGES.hobostarter files.
+  * Change your application's name in app/views/taglibs/application.dryml.
 
 
 === Pushing Your Changes
 
-If you forked with github, or if you've already set up the origin,
-'git push' will work as usual.
-
-However, if your repo considers Hobostarter to be the origin, you
-need to reset it to point at yours:
+If your repo considers Hobostarter to be the origin, you need to point it
+at your upstream repo instead.
 
   1. $ git config remote.origin.url MYREMOTEURL
   2. $ git push origin master
