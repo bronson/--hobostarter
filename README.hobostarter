@@ -1,3 +1,49 @@
+== WARNING OBSOLETE !!!!
+
+This branch uses symlinks to link in the Hobo plugin.  This is not a
+good approach and has been abandoned.  Use master instead.
+
+
+=== by-symlink
+
+This symlinks each plugin, i.e. ln -s vendor/hobo/hobo vendor/plugins/hobo.
+It works but it results in duplicated code in the tree, messing up grepping
+and IDEs.  Also, symlinks have problems on Windows.
+
+Verdict: not good.
+
+
+=== by-env:
+
+This technique puts the Hobo tree in vendor/hobo, then adds a line to
+config/environment.rb to include the plugins in manually.
+It's promising but:
+
+- It requires a change in Rails 2.1 for Hobo generators to work.
+  Rails 2.0.2 is not new enough.
+
+- Hobo hard-codes the taglibs path to be 'vendor/plugins'
+  taglib_filename in taglib.rb needs to be fixed so it will work in vendor/hobo.
+
+Verdict: Promising but Rails 2.2 needs to be released first.
+  
+
+=== by-plugin:
+
+This just throws the entire Hobo repo as a submodule in vendor/plugins.
+It works because Rails recursively searches vendor/plugins for plugins,
+so it finds multiple plugins in Hobo.
+It's promising but:
+
+- It also includes will_paginate and the rspec plugins in your app.
+
+- It requires a change to Hobo to work.  This is hard-coded:
+CORE_TAGLIB        = { :src => "core", :plugin => "hobo" }
+
+Verdict: looks great.  If Hobo can be fixed to not hard-code this,
+this is probably the best way to go.
+
+
 == Welcome to Hobostarter
 
 Starting a Hobo project and following upstream changes has never
