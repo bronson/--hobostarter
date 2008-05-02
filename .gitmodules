@@ -1,6 +1,6 @@
 [submodule "vendor/rails"]
 	path = vendor/rails
 	url = git://github.com/rails/rails.git
-[submodule "vendor/hobo"]
-	path = vendor/hobo
+[submodule "vendor/plugins/hobo"]
+	path = vendor/plugins/hobo
 	url = git://github.com/tablatom/hobo.git

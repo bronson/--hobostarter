@@ -1,6 +1,6 @@
 <!-- Define your application-wide tags here -->
 
-<include src="rapid" plugin="hobo"/>
+<include src="rapid" plugin="hobo/hobo"/>
 
 <set-theme name="clean"/>
 
