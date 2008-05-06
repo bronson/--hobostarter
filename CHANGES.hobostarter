@@ -1,2 +1,9 @@
-- Applied upstream bugfix so users can change their own passwords.
-  http://hobocentral.net/forum/viewtopic.php?t=4160
+TODO minor: now that noboy calls include_taglib, can we get rid of the whole
+	Hobo::Controller::ClassMethods module?  Looks like it?
+
+rapid_user_pages.dryml is now included along with the rest of rapid.
+Before, Hobo would isolate it in its own controller-only namespace,
+making it so it could not be overridden in application.dryml.
+
+Applied upstream bugfix so users can change their own passwords.
+http://hobocentral.net/forum/viewtopic.php?t=4160
