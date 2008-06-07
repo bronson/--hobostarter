@@ -35,11 +35,8 @@ var Hobo = {
         var p = el.getAttribute("hobo-ajax-params")
         if (p) params = params + "&" + p
 
-        var opts = Object.merge(options || {}, { params: params})
-        Hobo.ajaxRequest(Hobo.putUrl(el),
-                         el.getAttribute("hobo-ajax-message") || "Saving...",
-                         updates,
-                         opts)
+        var opts = Object.merge(options || {}, { params: params, message: el.getAttribute("hobo-ajax-message")})
+        Hobo.ajaxRequest(Hobo.putUrl(el), updates, opts)
     },
 
     ajaxUpdateParams: function(updates, resultUpdates) {
@@ -213,6 +210,21 @@ var Hobo = {
         return new Ajax.InPlaceEditor(el, Hobo.putUrl(el), opts)
     },
 
+    nicEditorOptions: { buttonList : ['bold','italic',
+                                      'left','center','right',
+                                      'ul',
+                                      'fontFormat',
+                                      'indent','outdent',
+                                      'link','unlink',
+                                      'image', 'removeLink']},
+
+    makeNicEditor: function(element) {
+        if (!Hobo.nicEditorOptions.iconsPath) { Hobo.nicEditorOptions.iconsPath = urlBase + '/images/nicEditorIcons.gif' }
+        var nic = new nicEditor(Hobo.nicEditorOptions)
+        nic.panelInstance(element, {hasPanel : true})
+        return nic.instanceById(element)
+    },
+
     applyEvents: function(root) {
         root = $(root)
         function select(p) {
@@ -234,25 +246,22 @@ var Hobo = {
         })
 
         select(".in-place-html-textarea-bhv").each(function (el) {
-            var options = {rows: 2, handleLineBreaks: false}
-            if (typeof(tinyMCE) != "undefined") options["submitOnBlur"] = false
+            var nicEditPresent = typeof(nicEditor) != "undefined"
+            var options = { rows: 2, handleLineBreaks: false, okButton: true, cancelLink: true, okText: "Save" }
+            if (nicEditPresent) options["submitOnBlur"] = false
             var ipe = Hobo._makeInPlaceEditor(el, options) 
-            if (typeof(tinyMCE) != "undefined") {
+            if (nicEditPresent) {
                 ipe.afterEnterEditMode = function() {
-                    var id = this.form.id = Hobo.uid()
-
-                    // 'orrible 'ack
-                    // What is the correct way to individually configure a tinyMCE instace?
-                    var old = tinyMCE.settings.theme_advanced_buttons1
-                    tinyMCE.settings.theme_advanced_buttons1 += ", separator, save"
-                    tinyMCE.addMCEControl(this.editField, id);
-                    tinyMCE.settings.theme_advanced_buttons1 = old
-
-                    this.form.onsubmit = function() {
-                        tinyMCE.removeMCEControl(ipe.form.id)
-                        setTimeout(ipe.onSubmit.bind(ipe), 10)
-                        return false
-                    }
+                    var editor = this._controls.editor
+                    var id = editor.id = Hobo.uid()
+                    var nicInstance = Hobo.makeNicEditor(editor)
+                    var panel = this._form.down(".nicEdit-panel")
+                    panel.appendChild(this._controls.cancel)
+                    panel.appendChild(this._controls.ok)
+                    bkLib.addEvent(this._controls.ok,'click', function () {
+                        nicInstance.saveContent()
+                        setTimeout(function() {nicInstance.remove()}, 1)
+                    })
                 }
             }
         })
@@ -302,7 +311,7 @@ var Hobo = {
 
 
     putUrl: function(el) {
-        spec = Hobo.parseFieldId(el)
+        var spec = Hobo.parseFieldId(el)
         return urlBase + "/" + Hobo.pluralise(spec.name) + "/" + spec.id + "?_method=PUT"
     },
 
@@ -316,8 +325,8 @@ var Hobo = {
 
         
     fieldSetParam: function(el, val) {
-        spec = Hobo.parseFieldId(el)
-        res = spec.name + '[' + spec.field + ']=' + encodeURIComponent(val)
+        var spec = Hobo.parseFieldId(el)
+        var res = spec.name + '[' + spec.field + ']=' + encodeURIComponent(val)
         if (typeof(formAuthToken) != "undefined") {
             res = res + "&" + formAuthToken.name + "=" + formAuthToken.value
         }
@@ -358,6 +367,15 @@ var Hobo = {
     },
 
 
+    ajaxUpdateField: function(element, field, value, updates) {
+        var objectElement = Hobo.objectElementFor(element)
+        var url = Hobo.putUrl(objectElement)
+        var spec = Hobo.parseFieldId(objectElement)
+        var params = spec.name + '[' + field + ']=' + encodeURIComponent(value)
+        new Hobo.ajaxRequest(url, updates, { method:'put', message: "Saving...", params: params });
+    },
+
+
     showEmptyMessageAfterLastRemove: function(el) {
         var empty
         var container = $(el.parentNode)
@@ -370,7 +388,7 @@ var Hobo = {
 
     parseFieldId: function(el) {
         id = el.getAttribute("hobo-model-id")
-        return id && parseId(id)
+        return id && Hobo.parseId(id)
     },
 
 
@@ -398,6 +416,11 @@ var Hobo = {
             el = el.parentNode;
         }
         if (m) return el;
+    },
+
+    modelIdFor: function(el) {
+        var e = Hobo.objectElementFor(el)
+        return e && e.getAttribute("hobo-model-id");
     },
 
 
@@ -523,12 +546,12 @@ SelectManyInput = Behavior.create({
     addOne : function() {
         var select = this.element.down('select') 
         var selected = select.options[select.selectedIndex]
-        if (selected.style.display != "none" & selected.text != "") {
+        if (selected.value != "") {
             var newItem = $(DOM.Builder.fromHTML(this.element.down('.item-proto').innerHTML.strip()))
             this.element.down('.items').appendChild(newItem);
             newItem.down('span').innerHTML = selected.innerHTML
             this.itemAdded(newItem, selected)
-            selected.style.display = 'none'
+            selected.disabled = true
             select.value = ""
             Event.addBehavior.reload()
         }
@@ -546,7 +569,7 @@ SelectManyInput = Behavior.create({
                              afterFinish: function (ef) { ef.element.remove() } } ) 
         var label = el.down('span').innerHTML
         var option = $A(this.element.getElementsByTagName('option')).find(function(o) { return o.innerHTML == label })
-        option.style.display = 'block'
+	option.disabled = false
     },
 
     itemAdded: function(item, option) {
@@ -561,7 +584,49 @@ SelectManyInput = Behavior.create({
 
 })
 
+NameManyInput = Object.extend(SelectManyInput, {
+    addOne : function() {
+        var select = this.element.down('select') 
+        var selected = select.options[select.selectedIndex]
+        if (selected.value != "") {
+            var newItem = $(DOM.Builder.fromHTML(this.element.down('.item-proto').innerHTML.strip()))
+            this.element.down('.items').appendChild(newItem);
+            newItem.down('span').innerHTML = selected.innerHTML
+            this.itemAdded(newItem, selected)
+            selected.disabled = true
+            select.value = ""
+            Event.addBehavior.reload()
+        }
+    }
+})
+
+                              
+AutocompleteBehavior = Behavior.create({
+    initialize : function() {
+        var target    = this.element.className.match(/complete-on:([\S]+)/)[1].split(':')
+        var model     = target[0]
+        var completer = target[1]
+
+        var spec = Hobo.parseId(model)
+        var url = urlBase + "/" + Hobo.pluralise(spec.name) +  "/complete_" + completer
+        var parameters = spec.id ? "id=" + spec.id : ""
+        new Ajax.Autocompleter(this.element, 
+                               this.element.next('.completions-popup'), 
+                               url, 
+                               {paramName:'query', method:'get', parameters: parameters});
+    }
+})
+
+
+
 Event.addBehavior({
+
+    'textarea.html' : function(e) {
+        if (typeof(nicEditors) != "undefined") {
+            Hobo.makeNicEditor(this)
+        }
+    },
+
     'div.select-many.input' : SelectManyInput(),
 
     '.association-count:click' : function(e) {
@@ -581,16 +646,7 @@ Event.addBehavior({
 	location.href = Hobo.addUrlParams(params, {remove: remove})
     },
 
-    '.autocompleter' : function(event) {
-        var target    = this.className.match(/complete-on:([\S]+)/)[1].split(':')
-        var model     = target[0]
-        var completer = target[1]
-
-        var spec = Hobo.parseId(model)
-        var url = urlBase + "/" + Hobo.pluralise(spec.name) +  "/complete_" + completer
-        var parameters = spec.id ? "id=" + spec.id : ""
-        new Ajax.Autocompleter(this, this.next('.completions-popup'), url, {paramName:'query', method:'get', parameters: parameters});
-    }
+    '.autocompleter' : AutocompleteBehavior()
 
 
 });

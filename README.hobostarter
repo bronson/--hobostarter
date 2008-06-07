@@ -9,6 +9,11 @@ been so easy.
 There is no need to install Rails or Hobo gems.  Just make sure
 you have Ruby and Git installed.
 
+  0. $ sudo gem install sqlite3-ruby
+
+Hobostarter uses sqlite3 by default because it's the easiest to set up.
+If you'd like to use another database, modify config/database.yml now.
+
   1. $ git clone git://github.com/bronson/hobostarter.git MYAPP
   2. $ cd MYAPP
   3. $ git submodule init

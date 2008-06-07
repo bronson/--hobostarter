@@ -1,0 +1,35 @@
+#!/bin/sh
+
+# This script is used to show if the files in Hobostarter are
+# diverging from the templates shipped with Hobo.  Ideally, there
+# should be no diference except for the template substitutions.
+
+
+diff -u app/controllers/application.rb vendor/rails/railties/helpers/application.rb
+diff -u app/controllers/front_controller.rb vendor/plugins/hobo/hobo/rails_generators/hobo_front_controller/templates/controller.rb
+diff -u app/controllers/users_controller.rb vendor/plugins/hobo/hobo/rails_generators/hobo_user_controller/templates/controller.rb
+
+diff -u app/models/user.rb vendor/plugins/hobo/hobo/rails_generators/hobo_user_model/templates/model.rb
+diff -u app/models/guest.rb vendor/plugins/hobo/hobo/rails_generators/hobo/templates/guest.rb
+
+diff -u app/views/front/index.dryml vendor/plugins/hobo/hobo/rails_generators/hobo_front_controller/templates/index.dryml
+diff -u app/views/front/search.dryml vendor/plugins/hobo/hobo/rails_generators/hobo_front_controller/templates/search.dryml
+diff -u app/views/taglibs/application.dryml vendor/plugins/hobo/hobo/rails_generators/hobo/templates/application.dryml
+diff -u app/views/taglibs/themes/clean/clean.dryml ./vendor/plugins/hobo/hobo/rails_generators/hobo_rapid/templates/themes/clean/views/clean.dryml
+
+diff -ur public/hobothemes/clean/images ./vendor/plugins/hobo/hobo/rails_generators/hobo_rapid/templates/themes/clean/public/images
+diff -ur public/hobothemes/clean/stylesheets ./vendor/plugins/hobo/hobo/rails_generators/hobo_rapid/templates/themes/clean/public/stylesheets
+diff -u public/javascripts/IE7.js ./vendor/plugins/hobo/hobo/rails_generators/hobo_rapid/templates/IE7.js
+diff -u public/javascripts/hobo-rapid.js ./vendor/plugins/hobo/hobo/rails_generators/hobo_rapid/templates/hobo-rapid.js
+diff -u public/javascripts/lowpro.js ./vendor/plugins/hobo/hobo/rails_generators/hobo_rapid/templates/lowpro.js
+diff -u public/stylesheets/hobo-rapid.css ./vendor/plugins/hobo/hobo/rails_generators/hobo_rapid/templates/hobo-rapid.css
+diff -u public/stylesheets/reset.css ./vendor/plugins/hobo/hobo/rails_generators/hobo_rapid/templates/reset.css
+
+diff -u public/javascripts/dryml-support.js vendor/plugins/hobo/hobo/rails_generators/hobo/templates/dryml-support.js
+
+
+# These generate a lot of noise and are currently unimportant...
+# diff -u test/functional/front_controller_test.rb vendor/plugins/hobo/hobo/rails_generators/hobo_front_controller/templates/functional_test.rb
+# diff -u app/helpers/front_helper.rb vendor/plugins/hobo/hobo/rails_generators/hobo_front_controller/templates/helper.rb
+# TODO: helpers
+

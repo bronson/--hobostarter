@@ -4,6 +4,7 @@ class User < ActiveRecord::Base
 
   fields do
     username :string, :login => true, :name => true
+    email_address :email_address
     administrator :boolean, :default => false
     timestamps
   end
@@ -21,11 +22,7 @@ class User < ActiveRecord::Base
   end
 
   def updatable_by?(updater, new)
-    return true if updater.administrator?
-    # Users can only change their own password.
-    # If you add fields to the user model that you want users to be
-    # able to change, add them to only_changed_fields here.
-    updater == self && only_changed_fields?(new, :password, :password_confirmation)
+    updater.administrator? || (updater == self && only_changed_fields?(new, :password, :password_confirmation))
   end
 
   def deletable_by?(deleter)

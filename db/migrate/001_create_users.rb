@@ -7,6 +7,9 @@ class CreateUsers < ActiveRecord::Migration
       t.datetime :remember_token_expires_at
       t.string   :username
       t.boolean  :administrator, :default => false
+      t.string   :state
+      t.datetime :key_timestamp
+      t.string   :email_address
       t.datetime :created_at
       t.datetime :updated_at
     end
