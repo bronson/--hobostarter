@@ -1,9 +1,5 @@
 <!-- Define your application-wide tags here -->
 
-<include src="rapid" plugin="hobo/hobo"/>
-
-<set-theme name="clean"/>
-
 <def tag="app-name">Hobostarter</def>
 
 

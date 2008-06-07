@@ -1,9 +1,10 @@
-TODO minor: now that noboy calls include_taglib, can we get rid of the whole
-	Hobo::Controller::ClassMethods module?  Looks like it?
+06 Jun 2008:
+- Rebased vendor/plugins/hobo to tablatom's master.  All needed patches
+  except one have moved upstream (still need to worry about hobo_spec).
+- Dropped the rapid_user_pages patch -- turned it into a TODO item.
+- Base master on the by-plugin branch (was by-symlink before).
+  Deleted by-plugin but keeping by-env and by-symlink although they're obsolete.
 
-rapid_user_pages.dryml is now included along with the rest of rapid.
-Before, Hobo would isolate it in its own controller-only namespace,
-making it so it could not be overridden in application.dryml.
-
-Applied upstream bugfix so users can change their own passwords.
-http://hobocentral.net/forum/viewtopic.php?t=4160
+27 Apr 2008:
+- Applied upstream bugfix so users can change their own passwords.
+  http://hobocentral.net/forum/viewtopic.php?t=4160

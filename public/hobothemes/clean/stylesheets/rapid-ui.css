@@ -16,6 +16,8 @@ table.new-record textarea, table.new-record input {
 .inplaceeditor-form, .inplaceeditor-form input {
 	display: inline;	
 }
+.inplaceeditor-form .nicEdit-panel .editor_ok_button {display: block; float: right; width: 50px; margin-top: 2px; height:21px; padding-top: 1px;}
+.inplaceeditor-form .nicEdit-panel .editor_cancel_link {display: block; float: right; margin: 3px 10px; background: transparent; }
 
 /**** Admin ****/
 
@@ -78,7 +80,7 @@ div.completions-popup ul li {
     text-align: left; width: 1px; white-space: nowrap; vertical-align: top;
     padding-top: 10px; padding-bottom: 10px;
 }
-.field-list textarea, .field-list input.string, .field-list input.password { width: 99%; margin: 0; }
+.field-list textarea, .field-list input.string, .field-list input.password, input.email-address { width: 99%; margin: 0; }
 
 /*input[type=text].wide { width: 100%; }*/
 textarea { height: 170px; }
@@ -86,3 +88,6 @@ textarea.wide { width: 100%; }
 textarea.tall { height: 350px; }
 
 .field-list input.percentage {width: 25px; display: inline; margin-right: 5px; padding: 1px 3px;}
+
+select.dev-user-changer { opacity: 0.3; position: absolute; top: -15px; left: 0; height: 10px;}
+select.dev-user-changer:hover { opacity: 1; }
