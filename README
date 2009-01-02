@@ -1,3 +1,14 @@
+== Welcome to Rails Starter
+
+This is the quickest way to start a Rails application and store it in Git.
+
+  1. $ git clone git://github.com/bronson/railsstarter.git MYAPP
+  2. $ cd MYAPP
+  3. $ git submodule init
+  4. $ git submodule update
+
+Now start writing!
+
 == Welcome to Rails
 
 Rails is a web-application framework that includes everything needed to create 
