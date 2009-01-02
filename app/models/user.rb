@@ -3,54 +3,54 @@ class User < ActiveRecord::Base
   hobo_user_model # Don't put anything above this
 
   fields do
-    username :string, :login => true, :name => true
-    email_address :email_address
+    name :string, :unique
+    email_address :email_address, :unique, :login => true
     administrator :boolean, :default => false
     timestamps
   end
 
-  set_admin_on_first_user
+  # This gives admin rights to the first sign-up.
+  # Just remove it if you don't want that
+  before_create { |user| user.administrator = true if count == 0 }
   
-  # --- Hobo Permissions --- #
+  
+  # --- Signup lifecycle --- #
 
-  # It is possible to override the permission system entirely by
-  # returning true from super_user?
-  # def super_user?; true; end
+  lifecycle do
 
-  def creatable_by?(creator)
-    creator.administrator? || !administrator
+    state :active, :default => true
+
+    create :signup, :available_to => "Guest",
+           :params => [:name, :email_address, :password, :password_confirmation],
+           :become => :active
+
+    transition :request_password_reset, { :active => :active }, :new_key => true do
+      UserMailer.deliver_forgot_password(self, lifecycle.key)
+    end
+
+    transition :reset_password, { :active => :active }, :available_to => :key_holder,
+               :update => [ :password, :password_confirmation ]
+
   end
+  
 
-  def updatable_by?(updater, new)
-    updater.administrator? || (updater == self && only_changed_fields?(new, :password, :password_confirmation))
-  end
+  # --- Permissions --- #
 
-  def deletable_by?(deleter)
-    deleter.administrator?
-  end
-
-  def viewable_by?(viewer, field)
-    true
-  end
-
-
-  # --- Fallback permissions --- #
-
-  # (Hobo checks these for models that do not define the *_by? methods)
-
-  def can_create?(obj)
+  def create_permitted?
     false
   end
 
-  def can_update?(obj, new)
-    false
+  def update_permitted?
+    acting_user.administrator? || (acting_user == self && only_changed?(:crypted_password, :email_address))
+    # Note: crypted_password has attr_protected so although it is permitted to change, it cannot be changed
+    # directly from a form submission.
   end
 
-  def can_delete?(obj)
-    false
+  def destroy_permitted?
+    acting_user.administrator?
   end
 
-  def can_view?(obj, field)
+  def view_permitted?(field)
     true
   end
 

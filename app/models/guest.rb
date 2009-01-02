@@ -1,19 +1,7 @@
 class Guest < Hobo::Guest
 
-  def can_update?(obj, field)
+  def administrator?
     false
-  end
-
-  def can_delete?(obj)
-    false
-  end
-
-  def can_create?(obj)
-    false
-  end
-
-  def can_view?(obj, field)
-    true
   end
 
 end

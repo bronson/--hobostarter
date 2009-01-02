@@ -16,7 +16,7 @@ var Hobo = {
     searchRequest: null,
     uidCounter: 0,
     ipeOldValues: {},
-    spinnerMinTime: 1000, // milliseconds 
+    spinnerMinTime: 500, // milliseconds 
 
     uid: function() {
         Hobo.uidCounter += 1
@@ -25,8 +25,8 @@ var Hobo = {
 
     updatesForElement: function(el) {
         el = $(el)
-        var updates = el.getAttribute("hobo-update")
-        return updates ? updates.split(/\s*,\s*/) : []
+        var updates = Hobo.getClassData(el, 'update')
+        return updates ? updates.split(':') : []
     },
 
     ajaxSetFieldForElement: function(el, val, options) {
@@ -101,15 +101,17 @@ var Hobo = {
             params.push(Form.serialize(form))
         }
 
-        Hobo.showSpinner(options.message, options.spinnerNextTo)
+        if (options.message != false) Hobo.showSpinner(options.message, options.spinnerNextTo)
+        
         var complete = function() {
-            if (form && options.resetForm) form.reset();
-            Hobo.hideSpinner();
-
-            if (options.onComplete)
-                options.onComplete.apply(this, arguments)
+            if (options.message != false) Hobo.hideSpinner();
+            if (options.onComplete) options.onComplete.apply(this, arguments)
             if (form && options.refocusForm) Form.focusFirstElement(form)
             Event.addBehavior.reload()
+        }
+        var success = function() {
+            if (options.onSuccess) options.onSuccess.apply(this, arguments)
+            if (form && options.resetForm) form.reset();            
         }
         if (options.method && options.method.toLowerCase() == "put") {
             delete options.method
@@ -122,7 +124,7 @@ var Hobo = {
             }
         }
 
-        new Ajax.Request(url, Object.merge(options, { parameters: params.join("&"), onComplete: complete }))
+        new Ajax.Request(url, Object.merge(options, { parameters: params.join("&"), onComplete: complete, onSuccess: success }))
     },
 
     hide: function() {
@@ -151,8 +153,8 @@ var Hobo = {
                 }
             }
         }
-        },
-
+    },
+    
     onFieldEditComplete: function(el, newValue) {
         el = $(el)
         var oldValue = Hobo.ipeOldValues[el.id]
@@ -165,9 +167,9 @@ var Hobo = {
             el.update(newValue)
         }
 
-        var modelId = el.getAttribute('hobo-model-id')
+        var modelId = Hobo.getModelId(el)
         if (oldValue) {
-            $$("*[hobo-model-id=" + modelId + "]").each(function(e) {
+            $$(".model:" + modelId).each(function(e) {
                 if (e != el && e.innerHTML == oldValue) e.update(newValue)
             })
         }
@@ -175,7 +177,6 @@ var Hobo = {
 
     _makeInPlaceEditor: function(el, options) {
         var old
-        var spec = Hobo.parseFieldId(el)
         var updates = Hobo.updatesForElement(el)
         var id = el.id
         if (!id) { id = el.id = Hobo.uid() }
@@ -194,7 +195,7 @@ var Hobo = {
                         old = val
                         return (Hobo.fieldSetParam(el, val) + "&" + updateParams)
                     },
-                    onFailure: function(resp) { 
+                    onFailure: function(_, resp) {
                         alert(resp.responseText); el.innerHTML = old
                     },
                     onEnterEditMode: function() {
@@ -210,73 +211,6 @@ var Hobo = {
         return new Ajax.InPlaceEditor(el, Hobo.putUrl(el), opts)
     },
 
-    nicEditorOptions: { buttonList : ['bold','italic',
-                                      'left','center','right',
-                                      'ul',
-                                      'fontFormat',
-                                      'indent','outdent',
-                                      'link','unlink',
-                                      'image', 'removeLink']},
-
-    makeNicEditor: function(element) {
-        if (!Hobo.nicEditorOptions.iconsPath) { Hobo.nicEditorOptions.iconsPath = urlBase + '/images/nicEditorIcons.gif' }
-        var nic = new nicEditor(Hobo.nicEditorOptions)
-        nic.panelInstance(element, {hasPanel : true})
-        return nic.instanceById(element)
-    },
-
-    applyEvents: function(root) {
-        root = $(root)
-        function select(p) {
-            return new Selector(p).findElements(root)
-        }
-
-        select(".in-place-textfield-bhv").each(function (el) {
-            var ipe = Hobo._makeInPlaceEditor(el)
-            ipe.getText = function() {
-                return this.element.innerHTML.gsub(/<br\s*\/?>/, "\n").unescapeHTML()
-            }
-        })
-
-        select(".in-place-textarea-bhv").each(function (el) {
-            var ipe = Hobo._makeInPlaceEditor(el, {rows: 2})
-            ipe.getText = function() {
-                return this.element.innerHTML.gsub(/<br\s*\/?>/, "\n").unescapeHTML()
-            }
-        })
-
-        select(".in-place-html-textarea-bhv").each(function (el) {
-            var nicEditPresent = typeof(nicEditor) != "undefined"
-            var options = { rows: 2, handleLineBreaks: false, okButton: true, cancelLink: true, okText: "Save" }
-            if (nicEditPresent) options["submitOnBlur"] = false
-            var ipe = Hobo._makeInPlaceEditor(el, options) 
-            if (nicEditPresent) {
-                ipe.afterEnterEditMode = function() {
-                    var editor = this._controls.editor
-                    var id = editor.id = Hobo.uid()
-                    var nicInstance = Hobo.makeNicEditor(editor)
-                    var panel = this._form.down(".nicEdit-panel")
-                    panel.appendChild(this._controls.cancel)
-                    panel.appendChild(this._controls.ok)
-                    bkLib.addEvent(this._controls.ok,'click', function () {
-                        nicInstance.saveContent()
-                        setTimeout(function() {nicInstance.remove()}, 1)
-                    })
-                }
-            }
-        })
-
-        select("select.number-editor-bhv").each(function(el) {
-            el.onchange = function() {
-                Hobo.ajaxSetFieldForElement(el, $F(el))
-            }
-        })
-                                                
-        select(".search-bhv").each(function(el) {
-            new Form.Element.Observer(el, 1.0, function() { Hobo.doSearch(el) })
-        });
-    },
-
 
     doSearch: function(el) {
         el = $(el)
@@ -285,7 +219,15 @@ var Hobo = {
         var search_results_panel = $(el.getAttribute("search-results-panel") || "search-results-panel")
         var url = el.getAttribute("search-url") || (urlBase + "/search")
 
-        el.focus();
+        var clear = function() { Hobo.hide(search_results_panel); el.clear() }
+
+        // Close window on [Escape]
+        Event.observe(el, 'keypress', function(ev) { 
+            if (ev.keyCode == 27) clear()
+        });
+
+        Event.observe(search_results_panel.down('.close-button'), 'click', clear)
+
         var value = $F(el)
         if (Hobo.searchRequest) { Hobo.searchRequest.transport.abort() }
         if (value.length >= 3) {
@@ -299,7 +241,6 @@ var Hobo = {
                                                         if (search_results_panel) {
                                                             Hobo.show(search_results_panel)
                                                         }
-                                                        setTimeout(function() {Hobo.applyEvents(search_results)}, 1)
                                                     },
                                                     method: "get",
                                                     parameters:"query=" + value });
@@ -311,13 +252,13 @@ var Hobo = {
 
 
     putUrl: function(el) {
-        var spec = Hobo.parseFieldId(el)
+        var spec = Hobo.modelSpecForElement(el)
         return urlBase + "/" + Hobo.pluralise(spec.name) + "/" + spec.id + "?_method=PUT"
     },
 
     
     urlForId: function(id) {
-        var spec = Hobo.parseId(id)
+        var spec = Hobo.parseModelSpec(id)
         var url = urlBase + "/" + Hobo.pluralise(spec.name)
         if (spec.id) { url += "/" + spec.id }
         return url
@@ -325,7 +266,7 @@ var Hobo = {
 
         
     fieldSetParam: function(el, val) {
-        var spec = Hobo.parseFieldId(el)
+        var spec = Hobo.modelSpecForElement(el)
         var res = spec.name + '[' + spec.field + ']=' + encodeURIComponent(val)
         if (typeof(formAuthToken) != "undefined") {
             res = res + "&" + formAuthToken.name + "=" + formAuthToken.value
@@ -351,7 +292,7 @@ var Hobo = {
             var objEl = Hobo.objectElementFor(el)
             Hobo.showSpinner('Removing');
             function complete() {
-                if (options.fade) { Hobo.fadeObjectElement(el) }
+                if (options.fade) { Hobo.fadeObjectElement(objEl) }
                 Hobo.hideSpinner()
             }
             if (updates && updates.length > 0) {
@@ -370,7 +311,7 @@ var Hobo = {
     ajaxUpdateField: function(element, field, value, updates) {
         var objectElement = Hobo.objectElementFor(element)
         var url = Hobo.putUrl(objectElement)
-        var spec = Hobo.parseFieldId(objectElement)
+        var spec = Hobo.modelSpecForElement(objectElement)
         var params = spec.name + '[' + field + ']=' + encodeURIComponent(value)
         new Hobo.ajaxRequest(url, updates, { method:'put', message: "Saving...", params: params });
     },
@@ -384,34 +325,36 @@ var Hobo = {
             new Effect.Appear(empty, {delay:0.3})
         }
     },
+    
 
+    getClassData: function(el, name) {
+        var match = el.className.match(new RegExp("(^| )" + name + "::(\\S+)($| )"))
+        return match && match[2]
+    },
+    
 
-    parseFieldId: function(el) {
-        id = el.getAttribute("hobo-model-id")
-        return id && Hobo.parseId(id)
+    getModelId: function(el) {
+        return Hobo.getClassData(el, 'model')
     },
 
 
-    parseId: function(id) {
-        m = id.match(/^([a-z_]+)_([0-9]+)(?:_([a-z_]+))?$/)
+    modelSpecForElement: function(el) {
+        var id = Hobo.getModelId(el)
+        return id && Hobo.parseModelSpec(id)
+    },
+
+
+    parseModelSpec: function(id) {
+        m = id.gsub('-', '_').match(/^([^:]+)(?::([^:]+)(?::([^:]+))?)?$/)
         if (m) return { name: m[1], id: m[2], field: m[3] }
-    },
-
-
-    appendRow: function(el, rowSrc) {
-        // IE friendly method to add a <tr> (from html source) to a table
-        // el should be an element that contains *only* a table
-        el = $(el);
-        el.innerHTML = el.innerHTML.replace("</table>", "") + rowSrc + "</table>";
-        Hobo.applyEvents(el)
     },
 
 
     objectElementFor: function(el) {
         var m
         while(el.getAttribute) {
-            id = el.getAttribute("hobo-model-id");
-            if (id) m = id.match(/^([a-z_]+)_([0-9]+)(_[a-z0-9_]*)?$/);
+            id = Hobo.getModelId(el)
+            if (id) m = id.match(/^[^:]+:[^:]+$/);
             if (m) break;
             el = el.parentNode;
         }
@@ -420,19 +363,26 @@ var Hobo = {
 
     modelIdFor: function(el) {
         var e = Hobo.objectElementFor(el)
-        return e && e.getAttribute("hobo-model-id");
+        return e && Hobo.getModelId(e)
     },
 
 
     showSpinner: function(message, nextTo) {
         clearTimeout(Hobo.spinnerTimer)
         Hobo.spinnerHideAt = new Date().getTime() + Hobo.spinnerMinTime;
-        if(t = $('ajax-progress-text')) Element.update(t, message);
-        if(e = $('ajax-progress')) {
+        if (t = $('ajax-progress-text')) {
+            if (!message || message.length == 0) {
+                t.hide()
+            } else {
+                Element.update(t, message);
+                t.show()
+            }
+        }
+        if (e = $('ajax-progress')) {
             if (nextTo) {
                 var pos = $(nextTo).cumulativeOffset()
-                e.style.top = pos.top + "px"
-                e.style.left = (pos.left + nextTo.offsetWidth) + "px"
+                e.style.top = pos.top - nextTo.offsetHeight + "px"
+                e.style.left = (pos.left + nextTo.offsetWidth + 5) + "px"
             }
             e.style.display = "block";
         }
@@ -452,8 +402,8 @@ var Hobo = {
 
 
     updateElement: function(id, content) {
+        // TODO: Do we need this method?
         Element.update(id, content)
-        Hobo.applyEvents(id)
     },
 
     getStyle: function(el, styleProp) {
@@ -485,6 +435,28 @@ var Hobo = {
         }
 
         return window.location.href.sub(/(\?.*|$)/, "?" + params.toQueryString())
+    },
+    
+    
+    fixSectionGroup: function(e) {
+	    rows = e.childElements().map(function(e, i) {
+    	    cells = e.childElements().map(function(e, i) {
+        	    return e.outerHTML.sub("<DIV", "<td  valign='top'").sub(/<\/DIV>$/i, "</td>")
+            }).join('')
+
+            var attrs = e.outerHTML.match(/<DIV([^>]+)/)[1]
+            return "<tr" + attrs + ">" + cells + "</tr>"
+	    }).join("\n")
+
+        var attrs = e.outerHTML.match(/<DIV([^>]+)/)[1]
+
+	    var table= "<table cellpadding='0' cellspacing='0' border='0' style='border-collapse: collapse; border-spacing: 0'" + attrs + ">" + 
+	               rows + "</table>"
+	    e.outerHTML = table
+    },
+
+    makeHtmlEditor: function(textarea) {
+        // do nothing - plugins can overwrite this method
     }
 
 
@@ -534,7 +506,129 @@ Element.Methods.$$ = function(e, css) {
     return new Selector(css).findElements(e)
 }
 
-// --- has_many_through_input --- //
+
+HoboBehavior = Class.create({
+    
+    initialize: function(mainSelector, features) {
+        this.mainSelector = mainSelector
+        this.features = features
+        this.addEvents(mainSelector, features.events)
+    },
+    
+    addEvents: function(parentSelector, events) {
+        var self = this
+        
+        for (selector in events) {
+            fullSelector = parentSelector + ' ' + selector
+            var rhs = events[selector]
+            if (Object.isString(rhs)) {
+                this.addBehavior(fullSelector, this.features[rhs])
+            } else {
+                this.addEvents(fullSelector, rhs)
+            }
+        }
+        
+    },
+    
+    addBehavior: function(selector, handler) {
+        var self = this
+        behavior = {}
+        behavior[selector] = function(ev) {
+            self.features.element = this.up(self.mainSelector)
+            handler.call(self.features, ev, this)
+        }
+        Event.addBehavior(behavior)
+    }
+    
+})
+
+
+new HoboBehavior("ul.input-many", {
+  
+  events: {
+      "> li > div.buttons": {
+          ".add-item:click":    'addOne',
+          ".remove-item:click": 'removeOne'
+      }
+  },
+  
+  addOne: function(ev, el) {
+      Event.stop(ev)
+      var ul = el.up('ul'), li = el.up('li')
+      
+      var thisItem = li.down('div.input-many-item')
+      var newItem = "<li style='display:none'><div class='input-many-item'>" + 
+                    thisItem.innerHTML + 
+                    "</div>" + 
+                    "<div class='buttons' />" +
+                    "</div></li>"
+      var newItem = DOM.Builder.fromHTML(newItem)
+      ul.appendChild(newItem);
+      this.clearInputs(newItem);
+      
+      this.updateButtons()
+      this.updateInputNames()
+      
+      new Effect.BlindDown(newItem, {duration: 0.3})
+  },
+  
+  removeOne: function(ev, el) {
+      Event.stop(ev)
+      var self = this;
+      var li = el.up('li')
+      if (li.parentNode.childElements().length == 1) {
+          // It's the last one - don't remove it, just clear it
+          this.clearInputs(li)
+      } else {      
+          new Effect.BlindUp(li, { duration: 0.3, afterFinish: function (ef) {
+              li.remove() 
+              self.updateButtons()
+              self.updateInputNames()
+          } });
+      }
+  },
+  
+  clearInputs: function(item) {
+      $(item).select('input').each(function(input){
+          if (input.getAttribute('type').toLowerCase() == 'hidden') {
+              input.remove()
+          } else {
+              input.value = ""
+          }
+      })
+  },
+   
+  updateButtons: function() {
+      var removeButton = "<button class='remove-item'>-</button>"
+      var addButton    = "<button class='add-item'>+</button>"
+
+      var ul = this.element
+      if (ul.childElements().length == 1) {
+          ul.down('li').down('div.buttons').innerHTML = removeButton + ' ' + addButton
+      } else {
+          var add = ul.selectChildren('li').selectChildren('div.buttons').down('button.add-item')
+          if (add) add.remove()
+          ul.selectChildren('li:first-child').child('div.buttons').innerHTML = removeButton
+          ul.selectChildren('li:last-child').child('div.buttons').innerHTML = removeButton + ' ' + addButton
+      }
+      
+      Event.addBehavior.reload()
+  },
+  
+  updateInputNames: function() {
+      var prefix = Hobo.getClassData(this.element, 'input-many-prefix')
+      
+      this.element.selectChildren('li').each(function(li, index) {
+          li.select('*[name]').each(function(control) {
+              var changeId = control.id == control.name
+              control.name   = control.name.sub(new RegExp("^" + RegExp.escape(prefix) + "\[[0-9]+\]"), prefix + '[' + index +']')
+              if (changeId) control.id = control.name
+          })
+      })
+  }
+  
+})
+
 
 SelectManyInput = Behavior.create({
 
@@ -546,7 +640,7 @@ SelectManyInput = Behavior.create({
     addOne : function() {
         var select = this.element.down('select') 
         var selected = select.options[select.selectedIndex]
-        if (selected.value != "") {
+        if ($F(select) != "") {
             var newItem = $(DOM.Builder.fromHTML(this.element.down('.item-proto').innerHTML.strip()))
             this.element.down('.items').appendChild(newItem);
             newItem.down('span').innerHTML = selected.innerHTML
@@ -554,26 +648,32 @@ SelectManyInput = Behavior.create({
             selected.disabled = true
             select.value = ""
             Event.addBehavior.reload()
+            this.element.fire("rapid:add", { element: newItem })
+            this.element.fire("rapid:change", { element: newItem })
         }
     },
 
-    onclick : function(e) {
-        var el = Event.element(e);
-        Event.stop(e);
+    onclick : function(ev) {
+        var el = Event.element(ev);
         if (el.match(".remove-item")) { this.removeOne(el.parentNode) }
     },
 
     removeOne : function(el) {
+        var element = this.element
         new Effect.BlindUp(el, 
                            { duration: 0.3,
-                             afterFinish: function (ef) { ef.element.remove() } } ) 
+                             afterFinish: function (ef) { 
+                                 ef.element.remove() 
+                                 element.fire("rapid:remove", { element: el })
+                                 element.fire("rapid:change", { element: el })
+                                 } } ) 
         var label = el.down('span').innerHTML
-        var option = $A(this.element.getElementsByTagName('option')).find(function(o) { return o.innerHTML == label })
-	option.disabled = false
+        var option = $A(element.getElementsByTagName('option')).find(function(o) { return o.innerHTML == label })
+        option.disabled = false
     },
 
     itemAdded: function(item, option) {
-        this.hiddenField(item).value = option.innerHTML
+        this.hiddenField(item).value = option.value
     },
 
     hiddenField: function(item) {
@@ -603,11 +703,12 @@ NameManyInput = Object.extend(SelectManyInput, {
                               
 AutocompleteBehavior = Behavior.create({
     initialize : function() {
-        var target    = this.element.className.match(/complete-on:([\S]+)/)[1].split(':')
-        var model     = target[0]
+        var match     = this.element.className.match(/complete-on::([\S]+)/)
+        var target    = match[1].split('::')
+        var typedId   = target[0]
         var completer = target[1]
 
-        var spec = Hobo.parseId(model)
+        var spec = Hobo.parseModelSpec(typedId)
         var url = urlBase + "/" + Hobo.pluralise(spec.name) +  "/complete_" + completer
         var parameters = spec.id ? "id=" + spec.id : ""
         new Ajax.Autocompleter(this.element, 
@@ -620,33 +721,119 @@ AutocompleteBehavior = Behavior.create({
 
 
 Event.addBehavior({
-
-    'textarea.html' : function(e) {
-        if (typeof(nicEditors) != "undefined") {
-            Hobo.makeNicEditor(this)
-        }
+    
+    'div.section-group' : function() {
+        if (Prototype.Browser.IE) Hobo.fixSectionGroup(this);
     },
 
     'div.select-many.input' : SelectManyInput(),
 
-    '.association-count:click' : function(e) {
-	new Effect.ScrollTo('primary-collection', {duration: 1.0, offset: -20, transition: Effect.Transitions.sinoidal});
-	Event.stop(e);
+    'textarea.html' : function() {
+        Hobo.makeHtmlEditor(this)
     },
 
     'form.filter-menu select:change': function(event) {
-        var paramName = this.up('form').down('input[type=hidden]').value.gsub("-", "_")
+        var paramName = this.getAttribute('name')
         var params = {}
         var remove = [ 'page' ]
-	if ($F(this) == '') { 
+	    if ($F(this) == '') { 
             remove.push(paramName)
         } else {
             params[paramName] = $F(this)
-	}
-	location.href = Hobo.addUrlParams(params, {remove: remove})
+	    }
+	    location.href = Hobo.addUrlParams(params, {remove: remove})
     },
 
-    '.autocompleter' : AutocompleteBehavior()
+    '.autocompleter' : AutocompleteBehavior(),
+
+    '.string.in-place-edit, .datetime.in-place-edit, .date.in-place-edit, .integer.in-place-edit, .float.in-place.edit, big-integer.in-place-edit' :
+     function (ev) {
+
+         var ipe = Hobo._makeInPlaceEditor(this)
+         ipe.getText = function() {
+             return this.element.innerHTML.gsub(/<br\s*\/?>/, "\n").unescapeHTML()
+         }
+    },
+
+    '.text.in-place-edit, .markdown.in-place-edit, .textile.in-place-edit' : function (ev) {
+        var ipe = Hobo._makeInPlaceEditor(this, {rows: 2})
+        ipe.getText = function() {
+            return this.element.innerHTML.gsub(/<br\s*\/?>/, "\n").unescapeHTML()
+        }
+    },
+
+    ".html.in-place-edit" : function (ev) {
+        if (Hobo.makeInPlaceHtmlEditor) {
+            Hobo.makeInPlaceHtmlEditor(this)
+        } else {
+            var options = { 
+                rows: 2, handleLineBreaks: false, okButton: true, cancelLink: true, okText: "Save", submitOnBlur: false
+            }
+            var ipe = Hobo._makeInPlaceEditor(this, options) 
+        }
+    },
+
+    "select.integer.editor" : function(e) {
+        var el = this
+        el.onchange = function() {
+            Hobo.ajaxSetFieldForElement(el, $F(el))
+        }
+    },
+                                            
+    "input.live-search[type=search]" : function(e) {
+        var element = this
+        new Form.Element.Observer(element, 1.0, function() { Hobo.doSearch(element) })
+    }
 
 
 });
+
+ElementSet = Class.create(Enumerable, {
+    
+    initialize: function(array) {
+        this.items = array
+    },
+    
+    _each: function(fn) {
+        return this.items.each(fn)
+    },
+    
+    selectChildren: function(selector) {
+        return new ElementSet(this.items.invoke('selectChildren', selector).pluck('items').flatten())
+    },
+    
+    child: function(selector) {
+        return this.selectChildren(selector).first()
+    },
+    
+    select: function(selector) {
+        return new ElementSet(this.items.invoke('select', selector).flatten())
+    },
+
+    down: function(selector) {
+        for (var i = 0; i < this.items.length; i++) {
+            var match = this.items[i].down(selector)
+            if (match) return match
+        }
+        return null
+    },
+    
+    size: function() {
+        return this.items.length
+    },
+    
+    first: function() {
+        return this.items.first()
+    },
+
+    last: function() {
+        return this.items.last()
+    }
+    
+})
+
+Element.addMethods({
+    selectChildren: function(element, selector) {
+        return new ElementSet(Selector.matchElements(element.childElements(), selector))
+    }
+})
