@@ -5,3 +5,4 @@ doc/app
 db/*.sqlite3
 .DS_Store
 .tmp_*
+app/views/taglibs/auto
