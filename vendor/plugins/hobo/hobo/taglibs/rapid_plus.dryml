@@ -1,0 +1,106 @@
+<def tag="table-plus" attrs="sort-field, sort-direction, sort-columns" >
+  <% sort_field ||= @sort_field; sort_direction ||= @sort_direction; sort_columns ||= {} %>
+  <% sort_columns['this'] ||= this.member_class.name_attribute %>
+  <div class="table-plus" merge-attrs="&attributes - attrs_for(:with_fields) - attrs_for(:table)">
+    <div class="header" param="header">
+      <div class="search">
+        <form param="search-form" method="get" action="">
+          <hidden-fields for-query-string skip="page, search"/>
+          <span>Search</span>
+          <input class="search" type="search" name="search" value="&params[:search]"/>
+          <submit label="Go" class="search-button" param="search-submit"/>
+        </form>
+      </div>
+    </div>
+
+    <table merge-attrs="&attributes & (attrs_for(:table) + attrs_for(:with_fields))" empty merge-params>
+      <field-heading-row:>
+        <with-field-names merge-attrs="&all_attributes & attrs_for(:with_fields)">
+          <% col = sort_columns[scope.field_path] || scope.field_path
+             sort = sort_field == col && sort_direction == 'asc' ?
+                      "-#{col}" : col
+             sort_url = url_for(params.merge(:sort => sort) - [:page]) %>
+                          
+          <th param="#{scope.field-name}-heading">
+            <a href="&sort_url" class="column-sort" 
+               param="#{scope.field-name}-heading-link"><%= scope.field_name.titleize %></a>
+            <if test="&col == sort_field">
+              <do param="up-arrow" if="&sort_direction == 'desc'">&uarr;</do>
+              <do param="down-arrow" if="&sort_direction == 'asc'">&darr;</do>
+            </if>
+          </th>
+        </with-field-names>
+        <th if="&all_parameters[:controls]" class="controls"></th>
+      </field-heading-row>
+    </table>    
+    <do param="empty-message" if="empty?">No <collection-name lowercase/> to display</do>
+
+   
+    <page-nav param if="&this.respond_to? :page_count"/>
+  </div>
+</def>
+
+
+<def tag="sortable-collection" attrs="sortable-options"><%
+  singular_name = this.member_class.name.underscore
+  attributes[:id] ||= "#{singular_name}_ordering"
+  reorder_url = send("reorder_#{singular_name.pluralize}_url")
+%>
+  <collection class="sortable" merge>
+    <item: id="#{singular_name}_#{this.id}" param>
+      <div class="ordering-handle" param="handle">&uarr;<br/>&darr;</div>
+      <card param/>
+    </item:>
+  </collection>
+  <%= if Hobo::Dryml.last_if
+        opts = { :url => reorder_url,
+                 :constraint => :vertical,
+                 :overlap => :vertical,
+                 :scroll => :window,
+                 :handle => 'ordering-handle',
+                 :complete => [visual_effect(:highlight, attributes[:id])]
+                }
+        opts.update(sortable_options) if sortable_options
+        sortable_element attributes[:id], opts
+      end # FIXME: Make unobstrusive
+   %>
+</def>
+
+
+<def tag="preview-with-more" attrs="name">
+  <% name ||= collection_name.pluralize -%>
+  <section class="#{name.gsub(' ', '-').dasherize} preview-with-more" param="default">
+    <h3 param="heading"><%= name.titleize %></h3>
+    <a param="more">More <type-name plural lowercase/>...</a>
+    <collection param/>
+  </section>
+</def>
+
+
+<def tag="gravatar" attrs="size, rating">
+  <% size ||= 80; rating ||= 'g'; digest = Digest::MD5.hexdigest(this.email_address) -%>
+  <a class="gravatar"><img class="gravatar" src="http://www.gravatar.com/avatar/#{digest}?s=#{size}&r=#{rating}" merge-attrs/></a>
+</def>
+
+
+<def tag="live-search">
+  <div class="search">
+    <label for="search-field">Search</label><input type="search" class="live-search"/>
+    <spinner id="search-spinner"/>
+  </div>
+  <section class="hidden" id="search-results-panel">
+    <h2>Search Results</h2><div param="close-button">close</div>
+    <section id="search-results">&nbsp;</section>
+  </section>
+</def>
+
+
+<def tag="filter-menu" attrs="param-name, options, no-filter">
+  <% no_filter ||= "All" %>
+  <form action="&request.request_uri" method="get" class="filter-menu">
+    <div>
+      <select-menu name="&param_name" options="&options" selected="&params[param_name.gsub('-', '_')]"
+                   first-option="&no_filter" merge-params/>
+    </div>
+  </form>
+</def>

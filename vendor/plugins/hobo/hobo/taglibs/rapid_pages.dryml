@@ -1,0 +1,174 @@
+<def tag="page" attrs="title, full-title">
+  <% full_title ||= "#{title} : #{app_name}" %>
+  <html merge-attrs>
+    <head param>
+      <title param><%= strip_tags full_title %></title>
+      <do param="stylesheets">
+        <stylesheet name="reset, hobo-rapid"/>
+        <theme-stylesheet/>
+        <stylesheet name="application" param="app-stylesheet"/>
+      </do>
+
+      <do param="scripts">
+        <javascript param name="prototype, effects, dragdrop, controls, lowpro, hobo-rapid"/>
+        <if-ie version="lt IE 7" param="fix-ie6"><javascript name="IE7"/></if-ie>
+        <do param="custom-scripts"/>
+        <javascript param="application-javascript" name="application"/>
+      </do>
+    </head>
+
+    <body param>
+      <set-scoped flash-rendered="&false">
+        <ajax-progress param/>
+        <header class="page-header" param>
+          <h1 param="app-name"><a href="#{base_url}/"><app-name/></a></h1>
+          <live-search param if="&defined_route? :site_search"/>
+          <account-nav if="&login_url(Hobo::User.default_user_model)" param/>
+          <main-nav current="&title" param/>
+        </header>
+        <section with-flash-messages param="content"/>
+        <footer class="page-footer" param/>
+        <page-scripts param/>
+      </set-scoped>
+    </body>
+  </html>
+</def>
+
+
+
+<def tag="page-scripts">
+  <script type="text/javascript" param="default">
+    <hobo-rapid-javascripts/>
+    <part-contexts-storage/>
+  </script>
+</def>
+
+
+<def tag="index-page" polymorphic/>
+<def tag="new-page"   polymorphic/>
+<def tag="show-page"  polymorphic/>
+<def tag="edit-page"  polymorphic/>
+
+
+<def tag="permission-denied-page" attrs="message">
+  <% message ||= "That operation is not allowed" %>
+  <page merge>
+    <body: class="permission-denied"/>
+    <content: param>
+      <header param="content-header">
+        <h2 param="heading"><message/></h2>
+      </header>
+    </content:>
+  </page>
+</def>
+
+
+<def tag="not-found-page" attrs="message">
+  <% message ||= "The page you were looking for could not be found" %>
+  <page merge>
+    <body: class="not-found"/>
+    <content: param>
+      <header param="content-header">
+        <h2 param="heading"><message/></h2>
+      </header>
+    </content:>
+  </page>
+</def>
+
+
+<def tag="doctype" attrs="version"><%=
+  case version.upcase
+    when "HTML 4.01 STRICT"
+      '<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" ' + 
+        '"http://www.w3.org/TR/html4/strict.dtd">'
+    when "HTML 4.01 TRANSITIONAL"
+      '<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" ' + 
+        '"http://www.w3.org/TR/html4/loose.dtd">'
+    when "XHTML 1.0 STRICT"
+      '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" ' + 
+        '"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">'
+    when "XHTML 1.0 TRANSITIONAL"
+      '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" ' + 
+        '"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">'
+    when "XHTML 1.1"
+      '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" ' + 
+        '"http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">'
+  end
+%></def>
+
+<def tag="html" attrs="doctype">
+  <% doctype ||= 'XHTML 1.0 TRANSITIONAL' -%>
+  <doctype version="&doctype"/>
+  <% attributes.reverse_merge!(:xmlns => "http://www.w3.org/1999/xhtml") if doctype.upcase =~ /^XHTML/ -%>
+  <%= "<html#{tag_options(attributes)}>" %>
+    <set-scoped xmldoctype="&doctype.upcase =~ /^XHTML/"><do param="default"/></set-scoped>
+  <%= "</html>" %>
+</def>
+
+<!-- empty tags should be written as <br> in HTML and <br /> in XHTML -->
+<def tag="empty-tag" attrs="tag-name"><%= element(tag_name, attributes, nil, true, true) %></def>
+<def tag="base"><empty-tag tag-name="base" merge/></def>
+<def tag="meta"><empty-tag tag-name="meta" merge/></def>
+<def tag="link"><empty-tag tag-name="link" merge/></def>
+<def tag="img"><empty-tag tag-name="img" merge/></def>
+<def tag="br"><empty-tag tag-name="br" merge/></def>
+<def tag="hr"><empty-tag tag-name="hr" merge/></def>
+<def tag="frame"><empty-tag tag-name="frame" merge/></def>
+<def tag="area"><empty-tag tag-name="area" merge/></def>
+<def tag="param"><empty-tag tag-name="param" merge/></def>
+<def tag="col"><empty-tag tag-name="col" merge/></def>
+
+<def tag="if-ie" attrs="version">
+  <%= "<!--[if #{version || 'IE'}]>" %><do param="default"/><%= "<![endif]-->" %>
+</def>
+
+<def tag="stylesheet" attrs="name">
+  <%= stylesheet_link_tag *(comma_split(name) + [attributes]) %>
+</def>
+
+
+<def tag="javascript" attrs="name">
+  <if test="&name.is_a?(Symbol)">
+    <%= javascript_include_tag name %>
+  </if>
+  <else>
+    <repeat with="&comma_split(name)">
+      <%= javascript_include_tag this %>
+    </repeat>
+  </else>
+</def>
+
+
+<def tag="flash-message" attrs="type">
+  <% type = type ? type.to_sym : :notice -%>
+  <div class="flash #{type}" if="&flash[type]" merge-attrs><%= flash[type] %></div>
+</def>
+
+
+<def tag="flash-messages" attrs="names"><%=
+  scope.flash_rendered = true
+  names = names.nil? ? flash.keys : comma_split(names)
+  names.map { |name| flash_message :type => name }
+%></def>
+
+<def tag="ajax-progress">
+  <div id="ajax-progress">
+    <div>
+      <span id="ajax-progress-text"></span>
+    </div>
+  </div>
+</def>
+
+
+<def tag="default-page-title"><%= t = this.to_s; ; "#{t.blank? ? '' : t + ' - '}#{app_name}" %></def>
+
+
+<def tag="with-primary-collection" attrs="name"><%
+  ivar = "@#{this.class.name.underscore}_#{name}"
+    
+  if (collection = instance_variable_get(ivar))
+    %><do with="&collection" param="default"/><%
+  else
+    %><do field="&name" param="default"/><%
+  end
+%></def>

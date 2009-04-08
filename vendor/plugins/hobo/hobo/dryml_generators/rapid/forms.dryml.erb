@@ -1,0 +1,45 @@
+<% each_controller do -%>
+<%
+form_fields = standard_fields :belongs_to, :has_many
+
+cancel_to_show_page  = linkable?(:show)
+cancel_to_index_page = !cancel_to_index_page && linkable?(:index)
+-%>
+<def tag="form" for="<%= model.name %>">
+  <form merge param="default">
+    <error-messages param/>
+    <field-list fields="<%= form_fields * ', ' %>" param/>
+    <div param="actions">
+      <submit label="Save" param/><or-cancel param="cancel"/>
+    </div>
+  </form>
+</def>
+
+<% creators.each do |creator| -%>
+<def tag="<%= creator.name.to_s.dasherize %>-form" polymorphic/>
+<def tag="<%= creator.name.to_s.dasherize %>-form" for="<%= model.name %>">
+  <form lifecycle="<%= creator.name %>">
+    <error-messages param/>
+    <field-list fields="<%= creator.parameters * ', ' %>" param/>
+    <div param="actions">
+      <submit label="<%= creator.name.to_s.titleize %>" param/><or-cancel param="cancel"/>
+    </div>
+  </form>
+</def>
+<% end -%>
+
+<% transitions.each do |transition| -%>
+<def tag="<%= transition.name.to_s.dasherize %>-form" polymorphic/>
+<def tag="<%= transition.name.to_s.dasherize %>-form" for="<%= model.name %>">
+  <form lifecycle="<%= transition.name %>">
+    <error-messages param/>
+    <input type="hidden" name="key" value="&this.lifecycle.provided_key" if="&this.lifecycle.provided_key"/>
+    <field-list fields="<%= transition.parameters * ', ' %>" param/>
+    <div param="actions">
+      <submit label="<%= transition.name.to_s.titleize %>" param/><or-cancel param="cancel"/>
+    </div>
+  </form>
+</def>
+<% end -%>
+
+<% end # of each_model do -%>

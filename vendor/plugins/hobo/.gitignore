@@ -1,0 +1,5 @@
+*.sqlite3
+
+hobo/taglib-docs
+
+*/pkg

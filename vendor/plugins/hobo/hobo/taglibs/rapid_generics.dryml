@@ -1,0 +1,33 @@
+<def tag="card" polymorphic>
+  <div class="card" param="default" merge-attrs>
+    <header param/>
+    <div param="body" if="&all_parameters[:body]"/>
+  </div>
+</def>
+
+
+<def tag="search-card" polymorphic>
+  <card/>
+</def>
+
+
+<def tag="empty-collection-message">
+  <div class="empty-collection-message" style="#{'display:none' if !this.empty?}" param="default">
+    No <collection-name lowercase/> to display
+  </div>
+</def>
+
+
+<def tag="collection">
+  <ul class="collection #{collection_name :dasherize => true}" merge-attrs unless="empty?">
+    <li param="item" class="#{scope.even_odd} #{model_id_class}" repeat="&select_viewable">
+      <do param="default"><card param/></do>
+    </li>
+  </ul>
+  <empty-collection-message param="empty-message"/>
+</def>
+
+
+<def tag="field-names-where-true" attrs="fields"><%=
+  comma_split(fields).select { |f| this.send(f) }.map { |f| f.titleize }.join(', ')
+%></def>

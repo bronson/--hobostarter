@@ -1,0 +1,780 @@
+<!-- Rapid Forms provides various tags that make it quick and easy to produce working new or edit forms. 
+
+The main tags are:
+
+ - `<form>`, which acts like the dumb HTML tag if you provide the `action` attribute, and picks up various Rapid smarts 
+   otherwise.
+   
+ - `<input>`, which automatically choses an appropriate form control based on the type of the date.
+ 
+### Ajax Attributes
+
+Several of the tags in this taglib support the following set of ajax attributes:
+                                 
+ - update: one or more DOM ID's (comma separated string or an array) to be updated as part of the ajax call. Default - no
+   update.
+ 
+   NOTE: yes that's *DOM ID's* not part-names. A common source of confusion because by default the part name and DOM ID are
+   the same.
+
+ - params: a hash of name/value pairs that will be converted to HTTP parameters in the ajax request
+ 
+ - confirm: a message to be displayed in a JavaScript confirm dialog. By default there is no confirm dialog
+ 
+ - message: a message to be displayed in the Ajax progress spinner. Default: "Saving..."
+ 
+ - spinner-next-to: DOM ID of an element to position the ajax progress spinner next to.
+ 
+### Ajax Callbacks
+
+The following attributes are also supported by all the ajax tags. Set them to fragments of javascript to have that script
+executed at various points in the ajax request cycle:
+ 
+ - before: script to run befofre the request
+ 
+ - success: script to run on successful completion of the request
+ 
+ - failure: script to run on a request failure 
+ 
+ - complete: script to run on completion, regardless of success or failure.
+ 
+-->
+  
+  
+<!-- nodoc. -->
+<def tag="hidden-fields" attrs="fields, for-query-string, skip"><%= 
+  pairs = if for_query_string
+            query_params.to_a
+          else
+            hiddens = case fields
+                      when '*', nil
+                        # TODO: Need a better (i.e. extensible) way to eleminate certain fields
+                        this.class.column_names - ['type', 'created_at', 'updated_at']
+                      else
+                        comma_split(fields)
+                      end
+            hiddens.map do |field| 
+              val = this.send(field)
+              param_name = param_name_for(form_field_path + [field])
+              [param_name, val] unless val.nil? || 
+                                       field.to_sym.in?(this.class.attr_protected) || 
+                                       (this.new_record? && val == this.class.column(field).default)
+            end.compact
+          end
+  skip = comma_split skip
+  pairs.reject! { |p| p.first.in?(skip) }
+  pairs.map { |n, v| hidden_field_tag(n, v.to_s) if v && n.not_in?(scope.form_field_names) }.compact.join("\n")
+%></def>
+
+
+<!--
+`<form>` has been extended in Rapid to make it easier to construct and use forms with Hobo models. In addition to the base
+`<form>` tag, a form with contents is generated for each Hobo model. These are found in
+`app/views/taglibs/auto/rapid/forms.dryml`.
+
+### Usage
+
+`<form>` can be used as a regular HTML tag: 
+
+        <form action="/blog_posts/1" method="POST">...</form>
+
+If no `action` attribute is provided then the context is used to construct an appropriate action using restful routing:
+
+* If the context is a new record then the form action will be a `POST` to the create action:
+  
+        <form with="&BlogPost.new">...</form> -> <form action="/blog_posts" method="POST">...</form>
+
+* If the context is a saved record then the form action will be a `PUT` to the update action. This is handled in a special
+  way by Rails due to current browsers not supporting `PUT`, the method is set to `POST` with a hidden input called `_method`
+  with a value of `PUT`. Hobo adds this automatically:
+
+        <% blog_post = BlogPost.find(1) %>
+        <form with="&blog_post">...</form> -> 
+        <form action="/blog_posts/1" method="POST">
+          <input id="_method" type="hidden" value="PUT" name="_method"/>
+          ...
+        </form>
+
+AJAX based submission can be enabled by simply adding an `update` attribute. e.g.
+
+        <div part="comments"><collection:comments/></div>
+        <form with="&Comment.new" update="comments"/>
+
+`<form>` support all of the standard ajax attributes.
+
+### Additional Notes
+
+- Hobo automatically inserts an `auth_token` hidden field if forgery protection is enabled
+
+- Hobo inserts a `page_path` hidden field in create / update forms which it uses to re-render the correct page if a
+  validation error occurs.
+
+- `<form>` supports all of the standrd ajax attributes - (see the main taglib docs for Rapid Forms)
+  
+### Attributes
+
+ - reset-form: Clear the form after submission (only makes sense for ajax forms)
+ 
+ - refocus-form: Refocus the first form-field after submission (only makes sense for ajax forms)
+   
+-->
+<def tag="form" polymorphic attrs="update, hidden-fields, action, method, web-method, lifecycle, owner, multipart"><%= 
+  ajax_attrs, html_attrs = attributes.partition_hash(Hobo::RapidHelper::AJAX_ATTRS)
+  html_attrs[:enctype] ||= "multipart/form-data" if multipart
+   
+  new_record = this.try.new_record?
+
+  method = if method.nil?
+             (action || web_method || new_record) ? "post" : "put"
+           else
+             method.downcase
+           end
+
+  html_attrs[:action] = action || begin
+     target = if owner
+                collection_name = this.class.reverse_reflection(owner).name
+                this.send(owner).send(collection_name)
+              else
+                this
+              end
+     action = web_method || lifecycle
+     object_url(target, action, :method => method)
+   end
+   
+  if action.nil? && (html_attrs[:action].nil? ||
+                     (lifecycle.nil? && new_record && !this.creatable_by?(current_user)) ||
+                     (lifecycle.nil? && !new_record && !can_edit?))
+    Hobo::Dryml.last_if = false
+    ""
+  else
+    if method == "put"
+      # browsers don't support put -- use post and add the Rails _method hack
+      http_method_hidden = hidden_field_tag("_method", "PUT") 
+      html_attrs[:method] = "post" 
+    else
+      html_attrs[:method] = method
+    end
+     
+    if update || !ajax_attrs.empty?
+      # add an onsubmit to convert to an ajax form if `update` is given
+      function = ajax_updater(:post_form, update, ajax_attrs)
+      html_attrs[:onsubmit] = [html_attrs[:onsubmit], "#{function}; return false;"].compact.join("; ")
+    end
+     
+    hiddens = nil
+    body = with_form_context do
+      # It is important to evaluate parameters.default first, in order to populate scope.form_field_names
+      b = parameters.default
+      hiddens = self.hidden_fields(:fields => hidden_fields) if new_record
+      b
+    end
+     
+    auth_token = if method.nil? || method == 'get' || request_forgery_protection_token.nil?
+                   ''
+                 else
+                   element(:input, {:type => "hidden", 
+                           :name => request_forgery_protection_token.to_s,
+                           :value => form_authenticity_token}, nil, true, true)
+                 end
+     
+    unless method == "get"
+      page_path = if (request.post? || request.put?) && params[:page_path]
+                    params[:page_path]
+                  else
+                    view_name.sub(Hobo::Dryml::EMPTY_PAGE, params[:action])
+                  end
+      page_path_hidden = hidden_field_tag("page_path", page_path) 
+    end
+    
+    hiddens_div = element(:div, {:class => "hidden-fields"}, [http_method_hidden, page_path_hidden, auth_token, hiddens].join)
+     
+    body = [hiddens_div, body].join
+    
+    if action.nil? # don't add automatic css classes if the action was specified
+      if web_method
+        add_classes!(html_attrs, "#{type_id.dasherize}-#{web_method}-form")
+      else
+        add_classes!(html_attrs, "#{'new ' if new_record}#{type_id.dasherize}")
+      end
+    end
+
+    Hobo::Dryml.last_if = true
+    element("form", html_attrs, body)
+  end
+%></def>
+
+<!-- A shortcut for generating a submit button.
+
+### Usage
+
+    <submit label="Go!"/> -> <input type="submit" value="Go!" class="button submit-button"/>
+    <submit image="/images/go.png"/> -> <input type="image" src="/images/go.png" class="button submit-button"/>
+  
+-->
+<def tag="submit" attrs="label, image">
+  <input if="&image" type="image" src="&image" merge-attrs class="image-button submit-button"/>
+  <else>
+    <input type="submit" value="#{label}" merge-attrs class="button submit-button"/>
+  </else>
+</def>
+
+<!--
+Provides an editable control tailored to the type of the object in context. `<input>` tags should be used within a
+`<form>`. `<input>` is a _polymorphic_ tag which means that there are a variety of definitions, each one written for a
+particular type. For example there are inputs for `text`, `boolean`, `password`, `date`, `datetime`, `integer`,
+`float`, `string` and more.
+
+### Usage
+
+The tag behaves as a regular HTML input if the type attribute is given:
+
+    <input type="text" name="my_input"/> -> Output is exactly as provided, untouched by Rapid
+
+If no type attribute is given then the _context_ is used. For example if the context is a blog post:
+
+    <input:title/> -> 
+    <input id="blog_post[name]" class="string blog-post-name" type="text" value="My Blog Post" name="blog_post[name]"/>
+
+    <input:created_at/> -> 
+    <select id="blog_post_created_at_year" name="blog_post[created_at][year]">...</select>
+    <select id="blog_post_created_at_month" name="blog_post[created_at][month]">...</select>
+    <select id="blog_post_created_at_day" name="blog_post[created_at][day]">...</select>
+
+    <input:description/> -> 
+    <textarea class="text blog-post-description" id="blog_post[description]" name="blog_post[description]">...</textarea>
+
+If the context is a `belongs_to` association, the `<select-one>` tag is used.
+
+If the context is a `has_many :through` association, the polymorphic `<collection-input>` tag is used.
+
+### Attributes
+
+ - no-edit: control what happens if `can_edit?` is false. Can be one of:
+ 
+   - view: render the current value using the `<view>` tag
+   - disable: render the input as normal, but add HTML's `disabled` attribute
+   - skip: render nothing at all
+   - ignore: render the input normally. That is, don't even perform the edit check.
+-->
+<def tag="input" attrs="no-edit"><%=
+  if attributes[:type]
+    element :input, attributes, nil, true, true
+  else
+    no_edit ||= :view
+    no_edit = no_edit.to_sym
+    no_edit_permission = !can_edit? unless no_edit == :ignore
+    if no_edit_permission && no_edit == :view
+      view
+    elsif no_edit_permission && no_edit == :skip
+      ""
+    else
+      attrs = add_classes(attributes, type_id.dasherize, type_and_field.dasherize)
+      attrs[:name] ||= param_name_for_this
+      attrs[:disabled] = true if no_edit_permission && no_edit == :disable
+      the_input = if (refl = this_field_reflection)
+                    if refl.macro == :belongs_to
+                      call_polymorphic_tag('input', attrs) or select_one(attrs)
+                    elsif refl.macro == :has_many
+                      if refl.options[:through]
+                        collection_input(attrs)
+                      else
+                        raise NotImplementedError, "An input for has-many associations has not been implemented yet"
+                      end
+                    end
+                  else
+                    call_polymorphic_tag('input', attrs) or
+                      (call_polymorphic_tag('input', HoboFields.to_class(this_type::COLUMN_TYPE), attrs) if defined?(this_type::COLUMN_TYPE)) or
+                      raise HoboError, ("No input tag for #{this_field}:#{this_type} (this=#{this.inspect})")
+                  end
+      if this_parent.errors[this_field]
+        "<span class='field-with-errors'>#{the_input}</span>"
+      else
+        the_input
+      end
+    end
+  end
+%></def>
+
+
+<!-- This tag is called by `<input>` when the context is a `has_many :through` collection. By default a `<select-many>`
+is used, but this can be customised on a per-type basis. For example, say you would like the `<check-many>` tag used to
+edit collections a `Category` model in your application:
+
+    <def tag="collection-input" for="Category"><check-many merge/></def>
+-->
+<def tag="collection-input" polymorphic></def>
+
+<!-- The default `<collection-input>` - calls `<select-many>` -->
+<def tag="collection-input" for="ActiveRecord::Base"><select-many merge/></def>
+
+
+<!-- A `<textarea>` input -->
+<def tag="input" for="text" attrs="name">
+  <%= text_area_tag(name, this, attributes) %>
+</def>
+
+<!-- A checkbox plus a hidden-field. The hidden field trick comes from Rails - it means that when the checkbox is not checked, the parameter name is still submitted, with a '0' value (the value is '1' when the checkbox is checked) -->
+<def tag="input" for="boolean" attrs="name">
+  <%= check_box_tag(name, '1', this, attributes) %><%= hidden_field_tag(name, '0') unless attributes[:disabled] %>
+</def>
+  
+<!-- A password input - `<input type='password'>` -->
+<def tag="input" for="password" attrs="name">
+  <%= password_field_tag(name, this, attributes) %>
+</def>
+
+<!-- A date picker, using the `select_date` helper from Rails
+  
+### Attributes
+
+ - order: The order of the year, month and day menus. A comma separated string or an array. Default: "year, month, day"
+ 
+Any other attributes are passed through to the `select_date` helper.
+
+The menus default to the current date if the current value is nil.
+ 
+  -->
+<def tag="input" for="date" attrs="order">
+  <% order = order.nil? ? [:year, :month, :day] : comma_split(order).*.to_sym -%>
+  <%= select_date(this || Time.now, attributes.merge(:prefix => param_name_for_this, :order => order)) %>
+</def>
+
+
+<!-- A date/time picker, using the `select_date` helper from Rails
+  
+### Attributes
+
+ - order: The order of the year, month and date menus. A comma separated string or an array. Default: "year, month,
+   day, hour, minute, second"
+ 
+Any other attributes are passed through to the `select_date` helper.
+ 
+The menus default to the current time if the current value is nil.
+ 
+  -->
+<def tag="input" for="time" attrs="order">
+  <% order = order.nil? ? [:year, :month, :day, :hour, :minute, :second] : comma_split(order).*.to_sym -%>
+  <%= select_date(this || Time.now, attributes.merge(:prefix => param_name_for_this, :order => order)) %>
+</def>
+
+
+<!-- A date/time picker, using the `select_datetime` helper from Rails
+  
+### Attributes
+
+ - order: The order of the year, month and date menus. A comma separated string or an array. Default: "year, month,
+   day, hour, minute, second"
+ 
+Any other attributes are passed through to the `select_datetime` helper.
+ 
+The menus default to the current time if the current value is nil.
+
+  -->
+<def tag="input" for="datetime" attrs="order">
+  <% order = order.nil? ? [:year, :month, :day, :hour, :minute, :second] : comma_split(order).*.to_sym -%>
+  <%= select_datetime(this || Time.now, attributes.merge(:prefix => param_name_for_this, :order => order)) %>
+</def>
+
+<!-- An `<input type='text'>` input. -->
+<def tag="input" for="integer" attrs="name">
+  <%= text_field_tag(name, this, attributes) %>
+</def>
+
+<!-- An `<input type='text'>` input. -->
+<def tag="input" for="float" attrs="name">
+  <%= text_field_tag(name, this, attributes) %>
+</def>
+
+<!-- An `<input type='text'>` input. -->
+<def tag="input" for="string" attrs="name">
+  <%= text_field_tag(name, this, attributes) %>
+</def>
+
+<!-- An `<input type='text'>` input. -->
+<def tag="input" for="big_integer" attrs="name">
+  <%= text_field_tag(name, this, attributes) %>
+</def>
+
+<!-- A `<select>` menu containing the values of an 'enum string'.
+  
+### Attributes
+
+ - labels: A hash that gives custom labels for the values of the enum.
+   Any values that do not have corresponding keys in this hash will get `value.titleize` as the label.
+   
+ - titleize: Set to false to have the value itself (rather than `value.titleize`) be the default label. Default: true
+  
+   -->
+<def tag="input" for="HoboFields::EnumString" attrs="labels, titleize"><%
+  labels ||= {}
+  titleize = true if titleize.nil?
+  options = this_type.values.map {|v| [labels.fetch(v.to_sym, titleize ? v.titleize : v), v] }
+  %>
+  <select name="#{param_name_for_this}" merge-attrs>
+    <%= options_for_select(options, this) %>
+  </select>
+</def>
+
+
+<!-- Provides either an ajax or non-ajax button to invoke a "remote method" or "web method" declared in the controller.
+Web Methods provide support for the RPC model of client-server interaction, in contrast to the REST model. The
+preference in Rails is to use REST as much as possible, but we are pragmatists, and sometimes you just to need a remote
+procedure call.
+
+The URL that the call is POSTed to is the `object_url` of `this`, plus the method name
+
+`<remote-method-button>` supports all of the standard ajax attributes (see the main taglib documention for Rapid
+Forms). If any ajax attributes are given, the button becomes an ajax button, if not,
+
+### Attributes 
+
+ - method: the name of the web-method to call
+ 
+ - label: the label on the button
+ 
+ -->
+<def tag="remote-method-button" attrs="method, update, label, confirm"><%= 
+  ajax_attributes, html_attributes = attributes.partition_hash(Hobo::RapidHelper::AJAX_ATTRS)
+
+  url = object_url(this, method.to_s.gsub('-', '_'), :method => :post)
+  raise ArgumentError, "no such web method '#{method}' on #{this.typed_id}" unless url
+  
+  add_classes!(html_attributes, "button remote-method-button #{method}-button")
+  label ||= method.titleize
+  if update || !ajax_attributes.empty?
+    ajax_attributes[:message] ||= label
+    func = ajax_updater(url, update, ajax_attributes.merge(:confirm => confirm))
+    html_attributes.update(:onclick => "var e = this; " + func, :type =>'button', :value => label)
+    element(:input, html_attributes, nil, true, true)
+  else
+    button_to(label, url, html_attributes.merge(:confirm => confirm))
+  end
+%></def>
+
+  
+<!-- Provides an ajax button to send a RESTful update or "PUT" to the server. i.e. to udate one or more fields of a
+record.
+  
+Note that unlike simliar tags, `<update-button>` does not support both ajax and non-ajax modes at this time. It only
+does ajax.
+
+`<update-button>` supports all of the standard ajax attributes (see the main taglib documention for Rapid Forms).
+
+### Attributes
+
+ - label: The label on the button. 
+ 
+ - fields: A hash with new field values pairs to update the resource with. The items in the hash will be converted to
+   HTTP parameters.
+ 
+ - params: Another hash with additional HTTP parameters to include in the ajax request
+ 
+  -->
+<def tag="update-button" attrs="label, update, fields, params"><%=
+   raise HoboError.new("no update specified") unless update
+
+   ajax_attributes, html_attributes = attributes.partition_hash(Hobo::RapidHelper::AJAX_ATTRS)
+   params = (params || {}).merge(this.class.name.underscore => fields)
+   ajax_attributes.reverse_merge!(:message => label, :params => params, :method => :put)
+   func = ajax_updater(object_url(this), update, ajax_attributes)
+   html_attributes.reverse_merge!(:type =>'button', :onclick => func, :value => label)
+   
+   element :input, add_classes(html_attributes, "button update-button update-#{this.class.name.underscore}-button"), nil, true, true %>
+</def>
+
+
+<!-- Provides either an ajax or non-ajax delete button to send a RESTful "DELETE". The context should be a record for
+which you to want provide a delete button.
+
+The Rapid Library has a convention of marking (in the output HTML, using a special CSS class) elements as "object
+elements", with the class and ID of the ActiveRecord object that they represent. `<delete-button>` assumes it is placed
+inside such an element, and will automatically find the right element to remove (fade out) from the DOM. The
+`<collection>` tag adds this metadata (CSS class) automatically, so `<delete-button>` works well when used inside a
+`<collection>`. This is a Clever Trick which needs to be revisted and perhaps simplified.
+
+If used within a `<collection>`, `<delete-button>` also knows how to add an "empty message" such as "no comments to
+display" when you delete the last item. Clever Tricks abound.
+
+Current limitation: There is no support for the ajax callbacks at this time.
+
+All the standard ajax attributes *except the callbacks* are supported (see the main taglib documention for Rapid Forms).
+
+
+
+### Attributes
+
+ - label: The label for the button. Default: "Remove"
+ 
+ - in-place: delete in place (ajax)? Default: true, or false if the record to be deleted is the same as the top level
+   context of the page
+
+ - image: URL of an image for the button. Changes the rendered tag from `<input type='button'>` to `<input type='image'
+   src='...'>`
+ 
+ - fade: Perform the fade effect (true/false)? Default: true
+ 
+  -->
+<def tag="delete-button" attrs="label, update, in-place, image, confirm, fade, subsite"><%=
+  in_place = false if in_place.nil? && this == @this && request.method == :get
+  url = object_url(this, :method => :delete, :subsite => subsite)
+  if (Hobo::Dryml.last_if = url && can_delete?)
+    attributes = attributes.merge(if image
+                                    { :type => "image", :src => "#{base_url}/images/#{image}" }
+                                  else
+                                    { :type => "button" }
+                                  end)
+    label ||= "Remove"
+    confirm = "Are you sure?" if confirm.nil?
+    
+    add_classes!(attributes,
+                 image ? "image-button" : "button",
+                 "delete-button delete-#{this.class.name.underscore.dasherize}-button")
+    if url
+      if in_place == false
+        attributes[:confirm] = confirm if confirm
+        attributes[:method] = :delete
+        button_to(label, url, attributes)
+      else
+        fade = true if fade.nil?
+        attributes[:value] = label
+        attributes[:onclick] = "Hobo.removeButton(this, '#{url}', #{js_updates(update)}, {fade:#{fade}, confirm: #{confirm.inspect}})"
+        element(:input, attributes, nil, true, true)
+      end
+    end
+  else
+    ""
+  end
+%></def>
+
+
+<!-- Provides either an ajax or non-ajax create button that will send a RESTful "POST" to the server to create a new resource.
+  
+All of the standard ajax attributes are supported (see the main taglib documention for Rapid Forms).
+
+### Attributes
+
+ - model: The class to instantiate, pass either the class name or the class object.
+
+ -->
+<def tag="create-button" attrs="model, update, label, fields, message"><%=
+  raise HoboError.new("no update specified") unless update
+
+  fields ||= {}
+  class_or_assoc = if model
+                     model.is_a?(String) ? model.constantize : model
+                   elsif Hobo.simple_has_many_association?(this)
+                     fields[this_field_reflection.primary_key_name] = this.proxy_owner.id
+                     this
+                   else
+                     raise HoboError.new("invalid context for <create-button>")
+                   end
+  new = class_or_assoc.new(fields)
+  new.set_creator(current_user)
+  if can_create?(new)
+    label ||= "New #{new.class.name.titleize}"
+    ajax_attributes = { :message => message }
+    class_name = new.class.name.underscore
+    ajax_attributes[:params] = { class_name => fields } unless fields.empty?
+    func = ajax_updater(object_url(new.class, :method => :post), update, ajax_attributes)
+    element :input, add_classes(attributes.merge(:type =>'button', :onclick => func, :value => label),
+                                "button create-button create-#{class_name}-button"), nil, true, true
+  end
+%></def>
+
+
+<def tag="select-one" attrs="include-none, blank-message, options, sort"><%
+  raise HoboError.new("Not allowed to edit #{this_field}") if !attributes[:disabled] && !can_edit? 
+
+  blank_message ||= "(No #{this_type.name.to_s.titleize})"
+   
+  options ||= begin
+    conditions = ActiveRecord::Associations::BelongsToAssociation.new(this_parent, this_field_reflection).conditions
+    this_field_reflection.klass.all(:conditions => conditions).select {|x| can_view?(x)}
+  end
+
+  select_options = options.map { |x| [x.to_s, x.id ] }
+  select_options = select_options.sort if sort
+  select_options.insert(0, [blank_message, ""]) if include_none || (this.nil? && include_none != false)
+  attributes = add_classes(attributes, "input", "belongs_to", type_and_field)
+  -%>
+  <select name="#{param_name_for_this(true)}" merge-attrs="&attributes.except :name">
+    <%= options_for_select(select_options, this ? this.id : "") %>
+  </select>
+</def>
+
+
+<def tag="name-one" attrs="complete-target, completer"><%
+  complete_target ||= this_field_reflection.klass
+  completer ||= (complete_target.is_a?(Class) ? complete_target : complete_target.class).name_attribute
+  -%>
+  <input type="text" name="#{param_name_for_this}" 
+         class="autocompleter #{type_and_field.dasherize} #{css_data :complete_on, typed_id(complete_target), completer}"
+         value="&name :no_wrapper => true, :if_present => true"
+         merge-attrs/>
+  <div class="completions-popup" style="display:none"></div>
+</def>
+
+
+<def tag="sti-type-input">
+  <select name="#{param_name_for(form_field_path + ['type'])}">
+    <%= options_for_select(this.class.send(:subclasses).map{|x| [x.name.titleize, x.name]}, this.class.name) %>
+  </select>
+</def>
+
+      
+<def tag="select-input">
+  <select-menu name="#{param_name_for_this}" selected="&this" merge/>
+</def>
+
+      
+<def tag="error-messages">
+  <section class="error-messages" merge-attrs if="&this.errors.length > 0">
+    <h2 param="heading">To proceed please correct the following:</h2>
+    <ul param>
+      <% this.errors.each do |attr, message|; next if message == "..." -%>
+        <li param><%= attr.titleize %> <%= message %></li>
+      <% end -%>
+    </ul>
+  </section>
+</def>
+
+
+<!--
+An input for `has_many :through` associations that lets the user chose the items from a `<select>` menu.
+  
+To use this tag, the model of the items the user is chosing *must* have unique names, and the 
+-->
+<def tag="select-many" attrs="options, targets, remove-label, prompt, disabled"><%
+  prompt ||= "Add #{this_field.titleize.singularize}"
+  options ||= this_field_reflection.klass.all(:conditions =>this.conditions).select {|x| can_view?(x)}
+                
+  values = this
+  -%>
+  <div class="input select-many" merge-attrs>
+    <div style="display:none" class="item-proto">
+      <div class="item" param="proto-item">
+        <span></span>
+        <input type="hidden" name="#{param_name_for_this}[]" param="proto-hidden"/>
+        <input type="button" class="remove-item" value="#{remove_label || 'Remove'}" param="proto-remove-button"/>
+      </div>
+    </div>
+    <div class="items">
+      <set param-name="&param_name_for_this"/>
+      <div class="item" param="item" repeat>
+        <span><%= h this.to_s %></span>
+        <input type="hidden" name="#{param_name}[]" value="@#{h this.id}" disabled="&disabled"
+               param="hidden"/>
+        <input type="button" class="remove-item" value="#{remove_label || 'Remove'}" disabled="&disabled"
+               param="remove-button"/>
+      </div>
+    </div>
+    <select merge-attrs="&{:disabled => disabled}">
+      <option value=""><prompt/></option>
+      <option repeat="&options.sort_by {|x| x.to_s.downcase}" value="@#{this.id}"
+              merge-attrs="&{:disabled => 'true'} if this.in?(values)"><%= h this.to_s %></option>
+    </select>
+  </div>
+</def>
+
+<!--
+Used inside a form to specify where to redirect after successful submission. This works by inserting a hidden field called `after_submit` which is used by Hobo if present to perform a redirect after the form submission.
+
+### Usage
+
+Use the `stay-here` attribute to remain on the current page:
+
+    <form>
+      <after-submit stay-here/>
+      ...
+    </form>
+
+Use the `go-back` option to return to the previous page:
+
+    <form>
+      <after-submit go-back/>
+      ...
+    </form>
+
+Use the `uri` option to specify a redirect location:
+
+    <form>
+      <after-submit uri="/admin"/>
+      ...
+    </form>
+-->
+<def tag="after-submit" attrs="uri, stay-here, go-back"><% 
+  uri = "stay-here" if stay_here
+  uri = session[:previous_uri] if go_back
+  -%>
+  <input type="hidden" value="&params[:after_submit] || uri" name="after_submit" if="&uri"/>
+</def>
+
+
+<def tag="select-menu" attrs="options, selected, first-option, first-value">
+  <select merge-attrs param="default">
+    <option value="#{first_value}" unless="&first_option.nil?"><first-option/></option>
+    <do param="options"><% options_for_select(options, selected.to_s) %></do>
+  </select>
+</def>
+
+
+<def tag="check-many">
+  <% collection = this; param_name = param_name_for_this; options ||= this.member_class.find(:all) -%>
+  <ul class="check-many">
+    <li repeat="&options">
+      <input type="checkbox" name="#{param_name}[]" value="&h this.to_s" checked="&this.in?(collection)"/>
+      <name/>
+    </li>
+  </ul>
+</def>
+
+
+<def tag="hidden-id-field">
+  <if:id><input type="hidden" name="#{param_name_for_this}" value="#{this}" /></if>
+</def>
+
+
+<def tag="input-many">
+  <set empty="&this.empty?"/>
+  <ul class="input-many #{this_field.dasherize} #{css_data :input_many_prefix, param_name_for_this}">
+    <li repeat class="#{'record-with-errors' unless this.errors.empty?}">
+      <error-messages without-heading class="sub-record"/>
+      <hidden-id-field/>
+      <div class="input-many-item" param="default"/>
+      <div class="buttons">
+        <button class="remove-item" unless="&this_parent.length == 1" merge-attrs="disabled">-</button>
+        <button class="add-item" if="&last_item?" merge-attrs="disabled">+</button>
+      </div>
+    </li>
+    <li if="&empty">
+      <fake-field-context fake-field="0" context="&this.new">
+        <div class="input-many-item" param="default"/>
+      </fake-field-context>
+      <div class="buttons">
+        <button class="add-item" merge-attrs="disabled">+</button>
+      </div>
+    </li>
+  </ul>
+</def>
+
+
+<def tag="input-all">
+  <% association_fkey = this_field_reflection.primary_key_name -%>
+  <ul class="input-all #{this_field.dasherize}">
+    <li repeat class="#{'record-with-errors' unless this.errors.empty?}">
+      <set-scoped form-field-names="&[]">
+        <hidden-id-field/>
+        <do param="default"/>
+        <hidden-fields skip="&association_fkey"/>
+      </set-scoped>
+    </li>
+  </ul>
+</def>
+
+
+<def tag="or-cancel">
+  <if test="&linkable?">or <a merge-attrs>Cancel</a></if>
+  <else>
+    <if test="&linkable?(this.class)">or <a to="&this.class" merge-attrs>Cancel</a></if>
+  </else>
+</def>
